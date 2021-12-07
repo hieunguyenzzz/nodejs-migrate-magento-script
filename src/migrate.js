@@ -95,6 +95,7 @@ const query = gql`
                                 short_description_2                              
                                 short_description_3
                                 short_description_4
+                                promotion
                               image {
                                 url
                                 label
@@ -103,6 +104,9 @@ const query = gql`
                                 maximum_price {
                                   final_price {
                                     value
+                                  }
+                                  regular_price {
+                                      value
                                   }
                                 }
                               }
@@ -132,13 +136,15 @@ request(endpoint, query).then(({products: {items}}) => {
         const {configurable_options} = item;
         for (const configurable_option of configurable_options) {            
             const {values} = configurable_option;
+            console.log(values);
             for (const value of values) {
                 let name = value.label;
                 let url = value.swatch_data.value;
                 if (url.indexOf('/') !== -1) {
+                    console.log(name);
                     url = 'https://static.mobelaris.com/media/attribute/swatch/swatch_image/110x90' + url;
-                    cloudinary.uploader.upload(url, {public_id: "swatchs/" + name.toLocaleLowerCase().replaceAll(' - ', '-').replaceAll(' ', '-')},
-                        function(error, result) {console.log(result, error); });
+                    cloudinary.uploader.upload(url, {public_id: "swatchs/" + name.toLocaleLowerCase().replace(' - ', '-').replace(' ', '-').replace(' - ', '-').replace(' ', '-').replace(' - ', '-').replace(' ', '-')},
+                        function(error, result) {});
                 }
             }
         }
@@ -147,13 +153,26 @@ request(endpoint, query).then(({products: {items}}) => {
 request(endpoint, query).then(({products: {items}}) => {
     
     for (const item of items) {
-        const {variants, name, url_key, configurable_options, heading_1, heading_2, description, desc_image, description_image_2, short_description_1, short_description_2} = item;
+        const {variants, name, url_key, configurable_options, heading_1, heading_2, description, desc_image, description_image_2, short_description_1, short_description_2, categories} = item;
 
         /**
          * images
          */
         const images = [];
-       
+        /**
+         * promotion
+         */
+        const allPromotions = [
+        ];
+        allPromotions[1107] = "25";
+        allPromotions[1176] = "30";
+        allPromotions[862] = "40";
+        allPromotions[915] = "50";
+        allPromotions[1106] = "60";
+        allPromotions[1287] = "35";
+        allPromotions[6915] = "55";
+
+
         /**
          * options build
          */
@@ -173,7 +192,7 @@ request(endpoint, query).then(({products: {items}}) => {
          */
         const shopifyVariants = [];
         for (const {product, attributes} of variants) {
-            const {heading_1, heading_2, desc_image, description_image_2, short_description_1, short_description_2} = product;
+            const {sku, heading_1, heading_2, desc_image, description_image_2, short_description_1, short_description_2, promotion} = product;
             const metafields = [
                 {
                     "description": "heading-1",                    
@@ -227,7 +246,8 @@ request(endpoint, query).then(({products: {items}}) => {
             
             const {media_gallery} = product; 
             
-            const sortMediaGallery = media_gallery.filter(media => !media.disabled && media.__typename !== "ProductVideo" ).sort((a,b) => {
+            const dimensionPhoto = media_gallery.filter(media => media.label == 'dimension').map(media => media.url.replace(/cache\/\w*\//g, '').replace('https://static.mobelaris.com/', 'https://res.cloudinary.com/dfgbpib38/image/upload/e_trim/'));
+            const sortMediaGallery = media_gallery.filter(media => !media.disabled && media.__typename !== "ProductVideo" && media.label != 'dimension' ).sort((a,b) => {
                 if ( a.position < b.position) return -1;
                 if ( a.position > b.position) return 1;
                 return 0;
@@ -235,12 +255,33 @@ request(endpoint, query).then(({products: {items}}) => {
             for (const media of sortMediaGallery) {
                 images.push({altText: shopifyVariantOptions.map(({label}) => label).join(' / '), src: media.url.replace(/cache\/\w*\//g, '').replace('https://static.mobelaris.com/', 'https://res.cloudinary.com/dfgbpib38/image/upload/e_trim/')});
             }
+            
+            if (dimensionPhoto.length > 0) {
+                metafields.push({
+                    "description": "dimension-photo",                    
+                    "key": "dimension-photo",
+                    "namespace": "global",
+                    "type": "single_line_text_field",
+                    "value": dimensionPhoto.pop()
+                });
+            }
+
+            if (allPromotions[promotion]) {
+                metafields.push({
+                    "description": "promotion",                    
+                    "key": "promotion",
+                    "namespace": "global",
+                    "type": "number_integer",
+                    "value": allPromotions[promotion]
+                });
+            }
 
             const shopifyVariant = {
                 title: product.name,
+                sku,
                 options: shopifyVariantOptions.map(({label}) => label),
                 metafields,
-                price: product.price_range.maximum_price.final_price.value
+                price: product.price_range.maximum_price.regular_price.value
             };
 
             shopifyVariants.push(shopifyVariant);
@@ -249,7 +290,8 @@ request(endpoint, query).then(({products: {items}}) => {
         const input = {
             title: item.name,
             handle: item.url_key,               
-            options,            
+            tags: categories.map(category => category.name),
+            options,
             descriptionHtml: description.html,
             variants: shopifyVariants
         }
@@ -267,6 +309,13 @@ request(endpoint, query).then(({products: {items}}) => {
                     product {
                         id
                         title
+                        variants(first: 50) {
+                            edges {
+                                node {
+                                  id
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -275,7 +324,7 @@ request(endpoint, query).then(({products: {items}}) => {
         /**
          * create product and upload images
          */
-        request(shopifyEndpoint, createProductShopifyQuery, {input}).then(async ({errors ,productCreate }) => {
+        request(shopifyEndpoint, createProductShopifyQuery, {input}).then(async ({errors ,productCreate }) => {            
             const {product} = productCreate;
             const {id} = product;
             
