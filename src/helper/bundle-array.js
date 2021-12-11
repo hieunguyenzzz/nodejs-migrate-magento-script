@@ -2,11 +2,11 @@
  * return array of 
  * @param  images 
  */
-export default function bundleArray(images: [String]) {
+function bundleArray(images) {
     const result = [];
     let i = 0;
     while(i < images.length) {
-        if (i % 10 === 0) {
+        if (i > 0 && i % 10 === 0) {
             result.push(images.slice(i - 10, i));
         }
 
@@ -15,7 +15,7 @@ export default function bundleArray(images: [String]) {
         }
     }
 
-    return images;
+    return result;
 }
 
 module.exports = bundleArray;

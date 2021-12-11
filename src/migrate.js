@@ -391,72 +391,7 @@ const migrate = async function() {
                 const {createProduct: {data}} = await request(strapiEndpoind, createStrapiProductQuery, {data: createStrapiProductQueryData});
             } catch (error) {
 
-            }        
-                
-                // image 
-                // let i =1;
-                // const query = gql`
-                //     mutation productAppendImages($input: ProductAppendImagesInput!) {
-                //         productAppendImages(input: $input) {
-                //             userErrors {
-                //                 field
-                //                 message
-                //             }
-                //             product {
-                //                 id
-                //                 title
-                                
-                //                 images(first: 249)  {
-                //                     edges {
-                //                     node {
-                //                         id
-                //                         altText
-                //                         originalSrc                            
-                //                     }
-                //                     }
-                //               }
-                                
-                //             }
-                //         }
-                //     }
-                // `;
-                // console.log(id);
-                // while(i < images.length) {                
-                //     if (i % 10  === 0) {
-                //         try {
-                //             wait(5);
-                //             console.log(i);
-                //             const {productAppendImages} = await request(shopifyEndpoint, query, {input: {id, images: images.slice(i - 10, i)}});                    
-                //             const {product: {images: {edges}}} = productAppendImages;
-                //             const updateStrapiProductQuery = gql`
-                //                 mutation updateProduct($id: ID!, $data: ProductInput!) {
-                //                     updateProduct(id:$id, data: $data) {
-                //                     data {
-                //                         attributes {
-                //                         title
-                //                         }
-                //                     }
-                //                     }
-                //                 }
-                //             `;
-                //             const updateStrapiProductQueryData = {
-                //                 id: data.id,
-                //                 data: {
-                //                     "images": edges.map(({node}) => ({originalSrc: node.originalSrc, altText: node.altText, shopify_id: node.id}))
-                //                 }
-                //             };
-                            
-                //             //await request(strapiEndpoind, updateStrapiProductQuery, {data: createStrapiProductQueryData});
-    
-                //         } catch (error) {
-                //             continue;
-                //         }                    
-                //     }
-    
-                //     if (++i === images.length) {                  
-                //       const {productCreate} = await request(shopifyEndpoint, query, {input: {id, images: images.slice( i > 10 ? i - 10 : 0 , i)}});                                  
-                //     }
-                // }
+            }    
             
         }
     });

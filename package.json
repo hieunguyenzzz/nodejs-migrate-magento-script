@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "test": "jest"
+  },
   "dependencies": {
     "@apollo/client": "^3.5.5",
     "cloudinary": "^1.27.1",

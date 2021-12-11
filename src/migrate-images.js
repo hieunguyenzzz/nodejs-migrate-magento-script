@@ -1,4 +1,6 @@
 const { request, gql } = require('graphql-request');
+const wait = require('./helper/wait');
+const bundleArray = require('./helper/bundle-array');
 
 const migrateImages = async function () {
     const endpoint = 'https://www.mobelaris.com/graphql';
@@ -87,8 +89,7 @@ const migrateImages = async function () {
             .filter(({ __typename }) => __typename == 'ConfigurableProduct');
 
         for (const item of result) {
-
-            const { variants, image, sku, configurable_options } = item;            
+            const { variants, image, sku, configurable_options } = item;
             console.log(sku);
             /**
              * images
@@ -166,48 +167,32 @@ const migrateImages = async function () {
 
 
             let shopifyProduct = strapiProducts.find(product => product.attributes.sku == sku);
+            if (!shopifyProduct) {
+                console.log('product is missing on strapi'); continue;
+            }
             const filterImages = images.filter(image => !shopifyProduct.attributes.images.filter(i => i.originalSrc == image.src).length);
             let updateImagesError = false;
             let hasImportImages = [];
-
             console.log(filterImages.length);
-            while (i < filterImages.length) {
-                if (i % 10 === 0) {
+            const arrayBundle = bundleArray(filterImages);
+            for (const data of arrayBundle) {
+                do {
+                    wait(1);
+                    console.log(data);
                     try {
-                        console.log(i);
-                        console.log(filterImages.slice(i - 10, i));
-                        const { productAppendImages: { userErrors, product: { images: { edges } } } } = await request(shopifyEndpoint, updateImageQuery, { input: { id: shopifyProduct.attributes.shopify_id, images: filterImages.slice(i - 10, i) } });
+                        const { productAppendImages: { userErrors, product: { images: { edges } } } } = await request(shopifyEndpoint, updateImageQuery, { input: { id: shopifyProduct.attributes.shopify_id, images: data } });
                         if (userErrors.length > 0) {
                             console.log(userErrors);
-                            updateImagesError = true;
-                            break;
+                            continue;
                         }
                         hasImportImages = hasImportImages.concat(filterImages.slice(i - 10, i));
-
+                        break;
                     } catch (error) {
                         console.log(error);
-                        updateImagesError = true;
-                        break;
                     }
-                }
-
-                if (++i === filterImages.length) {
-                    try {
-                        console.log(i);
-                        console.log(filterImages.slice(i > 10 ? i - (i % 10) : 0));
-                        const { productAppendImages: { userErrors, product: { images: { edges } } } } = await request(shopifyEndpoint, updateImageQuery, { input: { id: shopifyProduct.attributes.shopify_id, images: filterImages.slice(i > 10 ? i - (i % 10) : 0) } });
-                        if (userErrors.length > 0) {
-                            console.log(userErrors);
-                            updateImagesError = true;
-                            break;
-                        }
-                        hasImportImages = hasImportImages.concat(filterImages.slice(i > 10 ? i - (i % 10) : 0));
-                    } catch(error) {
-                        console.log(error);
-                        updateImagesError = true;
-                    }                                                               
-                }
+                } while (true);
             }
+
             if (filterImages.length && !updateImagesError) {
                 console.log('-----importing------');
                 await request(strapiEndpoind, updateStrapiProductImageQuery, { id: shopifyProduct.id, data: { "images": shopifyProduct.attributes.images.concat(hasImportImages.map(i => ({ altText: i.altText, originalSrc: i.src }))) } })
@@ -251,7 +236,7 @@ const migrateImages = async function () {
                     }
                 `;
 
-                const { product: { images: { edges: images } } } = await request(shopifyEndpoint, shopifyImagesQuery, { id: shopifyProduct.attributes.shopify_id });                
+                const { product: { images: { edges: images } } } = await request(shopifyEndpoint, shopifyImagesQuery, { id: shopifyProduct.attributes.shopify_id });
                 await request(shopifyEndpoint, shopifyDeleteImagesQuery, { id: shopifyProduct.attributes.shopify_id, imageIds: images.map(({ node }) => node.id) });
                 await request(strapiEndpoind, strapiProductImagesDeleteQuery, { id: shopifyProduct.id, data: { "images": [] } });
 
