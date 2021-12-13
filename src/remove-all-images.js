@@ -106,7 +106,7 @@ const migrateImages = async function () {
                 const shopifyImagesQuery = gql`
                         query getProduct($id: ID!){
                             product(id: $id) {
-                                images (first: 150) {
+                                images (first: 200) {
                                     edges {
                                         node {
                                             id                                            

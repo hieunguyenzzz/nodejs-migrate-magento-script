@@ -75,6 +75,9 @@ const shopifyProductUpdateQuery = gql `
         }
     `;
 
+/**
+ * migrate price of all the product's variants on strapi instance
+ */
 request(endpoint, magentoProductQuery).then(async ({ products: { items } }) => {
     const {products: {data: strapiProducts}} = await request(strapiEndpoind, strapiProductsQuery);
     for (const {variants, sku} of items) {

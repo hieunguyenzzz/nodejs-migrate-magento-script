@@ -2,19 +2,19 @@ const { request, gql } = require('graphql-request');
 const wait = require('./helper/wait');
 const bundleArray = require('./helper/bundle-array');
 
-const migrateImages = async function () {
+const migrateImages = async function() {
     const endpoint = 'https://www.mobelaris.com/graphql';
     const shopifyEndpoint = 'https://fa0c9131669a0764ca4bceb70c4f687a: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@designer-editions-shop.myshopify.com/admin/api/2021-07/graphql.json';
     const strapiEndpoind = 'https://strapi.mobelaris.com/graphql';
-    const strapiProductQuery = gql`
+    const strapiProductQuery = gql `
     {
-        products(pagination: {page:1, pageSize:9999}) {
+        products(pagination: {page:1, pageSize:999}) {
             data {    
                 id
                 attributes {
                     sku
                     shopify_id
-                    images(pagination: {page: 1, pageSize: 999}) {
+                    images(pagination: {page: 1, pageSize: 250}) {
                         originalSrc
                         shopify_id
                         altText
@@ -25,7 +25,7 @@ const migrateImages = async function () {
     }
     `;
 
-    const magentoProductQuery = gql`
+    const magentoProductQuery = gql `
         {
             products(filter:{category_id: {in: ["2"]}}, currentPage:1, pageSize: 9999){
                 items {
@@ -84,9 +84,9 @@ const migrateImages = async function () {
 
     const { products: { data: strapiProducts } } = await request(strapiEndpoind, strapiProductQuery);
 
-    request(endpoint, magentoProductQuery).then(async ({ products: { items } }) => {
+    request(endpoint, magentoProductQuery).then(async({ products: { items } }) => {
         const result = items
-            .filter(({ __typename }) => __typename == 'ConfigurableProduct');
+            .filter(({ __typename }) => __typename === 'ConfigurableProduct');
 
         for (const item of result) {
             const { variants, image, sku, configurable_options } = item;
@@ -127,9 +127,12 @@ const migrateImages = async function () {
              * upload images to shopify
              */
 
-            const updateImageQuery = gql`
+            const updateImageQuery = gql `
                     mutation productAppendImages($input: ProductAppendImagesInput!) {
                         productAppendImages(input: $input) {
+                            newImages {
+                              id
+                            }
                             userErrors {
                                 field
                                 message
@@ -152,7 +155,7 @@ const migrateImages = async function () {
                         }
                     }
                 `;
-            const updateStrapiProductImageQuery = gql`
+            const updateStrapiProductImageQuery = gql `
                 mutation updateProduct($id: ID!, $data: ProductInput!) {
                     updateProduct(id:$id, data: $data) {
                     data {
@@ -163,29 +166,41 @@ const migrateImages = async function () {
                     }
                 }
             `;
+            const shopifyDeleteImagesQuery = gql `
+                    mutation productDeleteImages($id: ID!, $imageIds: [ID!]!) {
+                        productDeleteImages(id: $id, imageIds: $imageIds) {                        
+                            userErrors {
+                                field
+                                message
+                            }
+                        }
+                    }
+                `;
             let i = 1;
 
 
-            let shopifyProduct = strapiProducts.find(product => product.attributes.sku == sku);
+            let shopifyProduct = strapiProducts.find(product => product.attributes.sku === sku);
             if (!shopifyProduct) {
-                console.log('product is missing on strapi'); continue;
+                console.log('product is missing on strapi');
+                continue;
             }
-            const filterImages = images.filter(image => !shopifyProduct.attributes.images.filter(i => i.originalSrc == image.src).length);
+            const filterImages = images.filter(image => !shopifyProduct.attributes.images.filter(i => i.originalSrc === image.src).length);
             let updateImagesError = false;
             let hasImportImages = [];
             console.log(filterImages.length);
             const arrayBundle = bundleArray(filterImages);
             for (const data of arrayBundle) {
                 do {
-                    wait(1);
+                    wait(3);
                     console.log(data);
                     try {
-                        const { productAppendImages: { userErrors, product: { images: { edges } } } } = await request(shopifyEndpoint, updateImageQuery, { input: { id: shopifyProduct.attributes.shopify_id, images: data } });
+                        const { productAppendImages: { userErrors, newImages } } = await request(shopifyEndpoint, updateImageQuery, { input: { id: shopifyProduct.attributes.shopify_id, images: data } });
                         if (userErrors.length > 0) {
+                            await request(shopifyEndpoint, shopifyDeleteImagesQuery, { id: shopifyProduct.attributes.shopify_id, imageIds: newImages });
                             console.log(userErrors);
                             continue;
                         }
-                        hasImportImages = hasImportImages.concat(filterImages.slice(i - 10, i));
+                        hasImportImages = hasImportImages.concat(data);
                         break;
                     } catch (error) {
                         console.log(error);
@@ -199,7 +214,7 @@ const migrateImages = async function () {
             }
 
             if (updateImagesError) {
-                const shopifyDeleteImagesQuery = gql`
+                const shopifyDeleteImagesQuery = gql `
                     mutation productDeleteImages($id: ID!, $imageIds: [ID!]!) {
                         productDeleteImages(id: $id, imageIds: $imageIds) {                        
                             userErrors {
@@ -210,7 +225,7 @@ const migrateImages = async function () {
                     }
                 `;
 
-                const shopifyImagesQuery = gql`
+                const shopifyImagesQuery = gql `
                         query getProduct($id: ID!){
                             product(id: $id) {
                                 images (first: 150) {
@@ -224,7 +239,7 @@ const migrateImages = async function () {
                         }
                 `;
 
-                const strapiProductImagesDeleteQuery = gql`
+                const strapiProductImagesDeleteQuery = gql `
                     mutation updateProduct($id: ID!, $data: ProductInput!) {  
                         updateProduct(id: $id, data: $data) {
                             data {
