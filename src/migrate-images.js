@@ -4,8 +4,12 @@ const bundleArray = require('./helper/bundle-array');
 
 const migrateImages = async function() {
     const endpoint = 'https://www.mobelaris.com/graphql';
-    const shopifyEndpoint = 'https://fa0c9131669a0764ca4bceb70c4f687a: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@designer-editions-shop.myshopify.com/admin/api/2021-07/graphql.json';
+    const shopifyEndpoint = 'https://mobelaris-shop.myshopify.com/admin/api/2022-04/graphql.json';
     const strapiEndpoind = 'https://strapi.mobelaris.com/graphql';
+    const shopifyHeader = {
+        'X-Shopify-Access-Token': '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',
+    }
+
     const strapiProductQuery = gql `
     {
         products(pagination: {page:1, pageSize:999}) {
@@ -56,7 +60,8 @@ const migrateImages = async function() {
                             label
                         }                
                         variants {
-                            product {                    
+                            product {  
+                                sku                  
                                 image {
                                     url
                                     label
@@ -88,9 +93,57 @@ const migrateImages = async function() {
         const result = items
             .filter(({ __typename }) => __typename === 'ConfigurableProduct');
 
+
         for (const item of result) {
             const { variants, image, sku, configurable_options } = item;
-            console.log(sku);
+
+            //if (strapiProducts.data.map(p => p.attributes.sku).includes(sku)) continue;
+
+            let shopifyProduct = strapiProducts.find(product => product.attributes.sku == sku);
+            if (!shopifyProduct) continue;
+
+            const shopifyDeleteImagesQuery = gql `
+                    mutation productDeleteImages($id: ID!, $imageIds: [ID!]!) {
+                        productDeleteImages(id: $id, imageIds: $imageIds) {                        
+                            userErrors {
+                                field
+                                message
+                            }
+                        }
+                    }
+                `;
+
+            const shopifyImagesQuery = gql `
+                        query getProduct($id: ID!){
+                            product(id: $id) {
+                                images (first: 200) {
+                                    edges {
+                                        node {
+                                            id                                            
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                `;
+
+            const strapiProductImagesDeleteQuery = gql `
+                    mutation updateProduct($id: ID!, $data: ProductInput!) {  
+                        updateProduct(id: $id, data: $data) {
+                            data {
+                                attributes {
+                                title
+                                }
+                            }
+                        }
+                    }
+                `;
+
+            const { product: { images: { edges: shopifyImages } } } = await request(shopifyEndpoint, shopifyImagesQuery, { id: shopifyProduct.attributes.shopify_id }, shopifyHeader);
+            await request(shopifyEndpoint, shopifyDeleteImagesQuery, { id: shopifyProduct.attributes.shopify_id, imageIds: shopifyImages.map(({ node }) => node.id) }, shopifyHeader);
+            await request(strapiEndpoind, strapiProductImagesDeleteQuery, { id: shopifyProduct.id, data: { "images": [] } });
+
+
             /**
              * images
              */
@@ -102,7 +155,7 @@ const migrateImages = async function() {
             });
 
 
-            images.push({ altText: "", src: image.url.replace(/cache\/\w*\//g, '').replace('https://static.mobelaris.com/', 'https://res.cloudinary.com/dfgbpib38/image/upload/e_trim/') });
+            images.push({ altText: "", src: image.url.replace(/cache\/\w*\//g, '').replace('https://www.mobelaris.com/', 'https://res.cloudinary.com/dfgbpib38/image/upload/e_trim/') });
 
             for (const { product, attributes }
                 of variants) {
@@ -113,15 +166,17 @@ const migrateImages = async function() {
 
                 const { media_gallery } = product;
 
-                const sortMediaGallery = media_gallery.filter(media => !media.disabled && media.__typename !== "ProductVideo" && media.label != 'dimension').sort((a, b) => {
+                const sortMediaGallery = media_gallery.filter(media => !media.disabled && media.__typename !== "ProductVideo" && media?.label?.toLowerCase() != 'dimension').sort((a, b) => {
                     if (a.position < b.position) return -1;
                     if (a.position > b.position) return 1;
                     return 0;
                 });
                 for (const media of sortMediaGallery) {
-                    images.push({ altText: shopifyVariantOptions.map(({ label }) => label).join(' / '), src: media.url.replace(/cache\/\w*\//g, '').replace('https://static.mobelaris.com/', 'https://res.cloudinary.com/dfgbpib38/image/upload/e_trim/') });
+                    images.push({ altText: product.sku, src: media.url.replace(/cache\/\w*\//g, '').replace('https://www.mobelaris.com/', 'https://res.cloudinary.com/dfgbpib38/image/upload/e_trim/') });
                 }
             }
+
+
 
             /**
              * upload images to shopify
@@ -166,25 +221,13 @@ const migrateImages = async function() {
                     }
                 }
             `;
-            const shopifyDeleteImagesQuery = gql `
-                    mutation productDeleteImages($id: ID!, $imageIds: [ID!]!) {
-                        productDeleteImages(id: $id, imageIds: $imageIds) {                        
-                            userErrors {
-                                field
-                                message
-                            }
-                        }
-                    }
-                `;
             let i = 1;
 
 
-            let shopifyProduct = strapiProducts.find(product => product.attributes.sku === sku);
-            if (!shopifyProduct) {
-                console.log('product is missing on strapi');
-                continue;
-            }
-            const filterImages = images.filter(image => !shopifyProduct.attributes.images.filter(i => i.originalSrc === image.src).length);
+
+            // const filterImages = images.filter(image => !shopifyProduct.attributes.images.filter(i => i.originalSrc === image.src).length);
+            const filterImages = images;
+
             let updateImagesError = false;
             let hasImportImages = [];
             console.log(filterImages.length);
@@ -194,9 +237,9 @@ const migrateImages = async function() {
                     wait(3);
                     console.log(data);
                     try {
-                        const { productAppendImages: { userErrors, newImages } } = await request(shopifyEndpoint, updateImageQuery, { input: { id: shopifyProduct.attributes.shopify_id, images: data } });
+                        const { productAppendImages: { userErrors, newImages } } = await request(shopifyEndpoint, updateImageQuery, { input: { id: shopifyProduct.attributes.shopify_id, images: data } }, shopifyHeader);
                         if (userErrors.length > 0) {
-                            await request(shopifyEndpoint, shopifyDeleteImagesQuery, { id: shopifyProduct.attributes.shopify_id, imageIds: newImages });
+                            await request(shopifyEndpoint, shopifyDeleteImagesQuery, { id: shopifyProduct.attributes.shopify_id, imageIds: newImages }, shopifyHeader);
                             console.log(userErrors);
                             continue;
                         }
@@ -214,16 +257,7 @@ const migrateImages = async function() {
             }
 
             if (updateImagesError) {
-                const shopifyDeleteImagesQuery = gql `
-                    mutation productDeleteImages($id: ID!, $imageIds: [ID!]!) {
-                        productDeleteImages(id: $id, imageIds: $imageIds) {                        
-                            userErrors {
-                                field
-                                message
-                            }
-                        }
-                    }
-                `;
+
 
                 const shopifyImagesQuery = gql `
                         query getProduct($id: ID!){
@@ -251,8 +285,8 @@ const migrateImages = async function() {
                     }
                 `;
 
-                const { product: { images: { edges: images } } } = await request(shopifyEndpoint, shopifyImagesQuery, { id: shopifyProduct.attributes.shopify_id });
-                await request(shopifyEndpoint, shopifyDeleteImagesQuery, { id: shopifyProduct.attributes.shopify_id, imageIds: images.map(({ node }) => node.id) });
+                const { product: { images: { edges: images } } } = await request(shopifyEndpoint, shopifyImagesQuery, { id: shopifyProduct.attributes.shopify_id }, shopifyHeader);
+                await request(shopifyEndpoint, shopifyDeleteImagesQuery, { id: shopifyProduct.attributes.shopify_id, imageIds: images.map(({ node }) => node.id) }, shopifyHeader);
                 await request(strapiEndpoind, strapiProductImagesDeleteQuery, { id: shopifyProduct.id, data: { "images": [] } });
 
             }

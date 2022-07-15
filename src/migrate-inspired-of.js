@@ -39,7 +39,8 @@ const migrateInspiredOf = async function() {
         }
     `;
 
-    const allInspiredOf = [{
+    const allInspiredOf = [
+        {
             "name": "A and P Castiglioni"
         },
         {

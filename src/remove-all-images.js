@@ -25,7 +25,7 @@ const migrateImages = async function () {
 
     const magentoProductQuery = gql`
         {
-            products(filter:{category_id: {in: ["2"]}}, currentPage:1, pageSize: 100){
+            products(filter:{category_id: {in: ["2"]}}, currentPage:1, pageSize: 9999){
                 items {
                     __typename            
                     id
@@ -87,11 +87,15 @@ const migrateImages = async function () {
             .filter(({ __typename }) => __typename == 'ConfigurableProduct');
 
         for (const item of result) {
-
+            
             const { sku} = item;            
+            if (!['8062BA'].includes(sku)) {
+                continue;
+            }
             console.log(sku);
             
-            let shopifyProduct = strapiProducts.find(product => product.attributes.sku == sku);                                
+            let shopifyProduct = strapiProducts.find(product => product.attributes.sku == sku);  
+            if (!shopifyProduct) continue;
             const shopifyDeleteImagesQuery = gql`
                     mutation productDeleteImages($id: ID!, $imageIds: [ID!]!) {
                         productDeleteImages(id: $id, imageIds: $imageIds) {                        

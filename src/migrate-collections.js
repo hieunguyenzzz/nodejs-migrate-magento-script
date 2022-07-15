@@ -1,12 +1,16 @@
 const { request, gql } = require('graphql-request');
 
 const endpoint = 'https://www.mobelaris.com/graphql';
-const shopifyEndpoint = 'https://fa0c9131669a0764ca4bceb70c4f687a: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@designer-editions-shop.myshopify.com/admin/api/2021-07/graphql.json';
+const shopifyEndpoint = 'https://mobelaris-shop.myshopify.com/admin/api/2022-04/graphql.json';
 const strapiEndpoind = 'https://strapi.mobelaris.com/graphql';
 
-const magentoCategoriesQuery = gql`
+const shopifyHeader = {
+    'X-Shopify-Access-Token': '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',
+}
+
+const magentoCategoriesQuery = gql `
     query categories{
-        categoryList(filters: {ids: {in: ["3", "76", "19", "37", "58", "13", "138"]}}) {
+        categoryList(filters: {ids: {in: ["3", "76", "19", "37", "58", "13", "138", "81", "194"]}}) {
         name
         description    
         children {
@@ -19,7 +23,7 @@ const magentoCategoriesQuery = gql`
     }
 `;
 
-const shopifyCreateCollection = gql`
+const shopifyCreateCollection = gql `
     mutation CollectionCreate($input: CollectionInput!) {
         collectionCreate(input: $input) {
         userErrors { field, message }
@@ -42,13 +46,14 @@ const shopifyCreateCollection = gql`
     }
 `;
 
-request(endpoint, magentoCategoriesQuery).then(async ({ categoryList }) => {
+request(endpoint, magentoCategoriesQuery).then(async({ categoryList }) => {
     let createCategories = [];
-    for (const { name, description, children } of categoryList) {
+    for (const { name, description, children }
+        of categoryList) {
         const createCollectionData = {
             input: {
                 title: name,
-                descriptionHtml: description,
+                descriptionHtml: description ? description : '',
                 ruleSet: {
                     appliedDisjunctively: false,
                     rules: {
@@ -60,11 +65,12 @@ request(endpoint, magentoCategoriesQuery).then(async ({ categoryList }) => {
             }
         };
         createCategories.push(createCollectionData);
-        for (const { name: childName, description: childDescription } of children) {
+        for (const { name: childName, description: childDescription }
+            of children) {
             const createCollectionData = {
                 input: {
                     title: childName,
-                    descriptionHtml: childDescription,
+                    descriptionHtml: childDescription ? childDescription : '',
                     ruleSet: {
                         appliedDisjunctively: false,
                         rules: {
@@ -81,12 +87,12 @@ request(endpoint, magentoCategoriesQuery).then(async ({ categoryList }) => {
     }
 
     for (const item of createCategories) {
-        console.log(item);
+        console.log(item.input.title);
         try {
-            await request(shopifyEndpoint, shopifyCreateCollection, item);
+            await request(shopifyEndpoint, shopifyCreateCollection, item, shopifyHeader);
         } catch (error) {
             console.log(error);
-        }                    
+        }
     }
-    
+
 });
